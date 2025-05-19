@@ -14,6 +14,20 @@ def load_preprocess():
     return df_h3k27me3_peaks
 
 
+def load_BAM_files():
+    """
+    Load BAM files.
+    """
+    # Load the BAM files
+    filterd_BAM = pd.read_csv("data/H3K27me3.bam" , sep="\t", header=None)
+
+    # Preprocess the dataset
+    #df_h3k27me3_peaks.columns = ["chrom", "start", "end", "name", "score", "strand"]
+
+    return filterd_BAM
+
+
+
 if __name__ == "__main__":
     # Load and preprocess the dataset
     df_h3k27me3_peaks = load_preprocess()
