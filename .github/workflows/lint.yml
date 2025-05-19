@@ -2,6 +2,8 @@ name: Lint Python Scripts
 
 on:
   push:
+    branches:
+      - main
     paths:
       - 'scripts/**/*.py'
   pull_request:
