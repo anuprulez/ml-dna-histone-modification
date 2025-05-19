@@ -21,10 +21,10 @@ def load_BAM_files():
     """
 
     # Load the BAM files
-    filterd_BAM = pd.read_csv("data/H3K27me3.bam" , sep="\t", header=None)
 
-    # Preprocess the dataset
-    #df_h3k27me3_peaks.columns = ["chrom", "start", "end", "name", "score", "strand"]
+    filterd_BAM = pysam.AlignmentFile("ex1.bam", "rb")
+
+    print(filterd_BAM.header)
 
     return filterd_BAM
 
