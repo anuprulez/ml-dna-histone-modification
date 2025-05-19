@@ -1,4 +1,5 @@
 from fireducks.pandas import pandas as pd
+import pysam
 
 
 def load_preprocess():
