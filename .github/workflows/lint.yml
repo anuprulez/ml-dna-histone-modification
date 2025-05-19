@@ -30,4 +30,4 @@ jobs:
 
       - name: Run ruff on /scripts
         run: |
-          ruff scripts/*.py
+          ruff check scripts/*.py

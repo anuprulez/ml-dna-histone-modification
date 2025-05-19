@@ -19,6 +19,7 @@ def load_BAM_files():
     """
     Load BAM files.
     """
+
     # Load the BAM files
     filterd_BAM = pd.read_csv("data/H3K27me3.bam" , sep="\t", header=None)
 
