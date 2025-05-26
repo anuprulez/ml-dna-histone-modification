@@ -70,7 +70,7 @@ def filter_peaks(i_read, chip_peaks):
             w_p_reads.append({
                 'chromosome': i_read.reference_name,
                 'query_name': i_read.query_name,
-                'query_name': i_read.query_sequence,
+                'query_sequence': i_read.query_sequence,
                 'reference_start': ref_start,
                 'reference_end': ref_end,
                 'query_start': query_start,
@@ -81,11 +81,11 @@ def filter_peaks(i_read, chip_peaks):
             })
         else:
             # If it doesn't overlap, create a negative sample
-            print(f"Negative sample: {i_read.query_name}, {i_read.reference_name}:{ref_start}-{ref_end}, Query: {query_subseq}")
+            #print(f"Negative sample: {i_read.query_name}, {i_read.reference_name}:{ref_start}-{ref_end}, Query: {query_subseq}")
             w_n_reads.append({
                 'chromosome': i_read.reference_name,
                 'query_name': i_read.query_name,
-                'query_name': i_read.query_sequence,
+                'query_sequence': i_read.query_sequence,
                 'reference_start': ref_start,
                 'reference_end': ref_end,
                 'query_start': query_start,
