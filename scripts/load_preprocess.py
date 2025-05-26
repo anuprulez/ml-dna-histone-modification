@@ -1,11 +1,13 @@
 from fireducks.pandas import pandas as pd
 import glob
 import pysam
+from sklearn.model_selection import train_test_split
 from pybedtools import BedTool
 
 
 window_size = 1000
 step_size = 10
+choromosome_name = "chr1"
 
 def load_preprocess():
     """
@@ -32,8 +34,8 @@ def filter_peaks(i_read, chip_peaks):
     """
     Filter peaks based on the reads.
     """
-    
-
+    w_p_reads = []
+    w_n_reads = []
     aligned_pairs = i_read.get_aligned_pairs(matches_only=True)
 
     # Only keep mappings where both query and ref positions are present
@@ -42,9 +44,6 @@ def filter_peaks(i_read, chip_peaks):
     # Convert to DataFrame for easier slicing
     df_pairs = pd.DataFrame(aligned_pairs, columns=["query_pos", "ref_pos"])
 
-    #print(df_pairs)
-    w_p_reads = []
-    w_n_reads = []
     # Slide a 1kb window over the reference positions
     for i in range(0, len(df_pairs) - window_size + 1, step_size):
         window = df_pairs.iloc[i:i + window_size]
@@ -70,7 +69,7 @@ def filter_peaks(i_read, chip_peaks):
             w_p_reads.append({
                 'chromosome': i_read.reference_name,
                 'query_name': i_read.query_name,
-                'query_sequence': i_read.query_sequence,
+                #'query_sequence': i_read.query_sequence,
                 'reference_start': ref_start,
                 'reference_end': ref_end,
                 'query_start': query_start,
@@ -85,7 +84,7 @@ def filter_peaks(i_read, chip_peaks):
             w_n_reads.append({
                 'chromosome': i_read.reference_name,
                 'query_name': i_read.query_name,
-                'query_sequence': i_read.query_sequence,
+                #'query_sequence': i_read.query_sequence,
                 'reference_start': ref_start,
                 'reference_end': ref_end,
                 'query_start': query_start,
@@ -114,7 +113,8 @@ def load_BAM_files():
         n_reads = []
         index_read = 0
         for read in filterd_BAM.fetch(until_eof=True):
-            if read.query_name != "None" and read.mapping_quality < 20 and read.query_length < 1000:
+            print(read.reference_name, read.query_name, read.mapping_quality, read.query_length, read.reference_start, read.reference_end)
+            if read.query_sequence in [None, "None"] or read.mapping_quality < 20 or read.query_length < 1000 or read.reference_name != choromosome_name:
                 continue
             start = read.reference_start
             end = read.reference_end
@@ -123,12 +123,11 @@ def load_BAM_files():
 
             reads.append({
                 'chromosome': read.reference_name,
-                'query_name': read.query_sequence,
-                'reference_start': read.reference_start + 1,
+                'query_name': read.query_name,
+                'reference_start': read.reference_start,
                 'reference_end': read.reference_end,
                 'mapping_quality': read.mapping_quality,
                 'query_length': read.query_length,
-                'sequence_length': len(read.query_sequence),
                 'reference_length': read.reference_length,
                 'is_reverse': read.is_reverse,
             })
@@ -137,7 +136,7 @@ def load_BAM_files():
             p_rd, n_rd = filter_peaks(read, chip_peaks)
             print(f"Read {index_read} processed.")
             index_read += 1
-            if index_read % 300 == 0:
+            if index_read % 1000 == 0:
                 print(f"Processed {index_read} reads so far.")
                 break
             p_reads.extend(p_rd)
@@ -151,7 +150,6 @@ def load_BAM_files():
         df_p_reads.to_csv(f"../data/reads_dataframes/{file.split('/')[-1].split('.')[0]}_p_read.csv", index=False)
         df_n_reads.to_csv(f"../data/reads_dataframes/{file.split('/')[-1].split('.')[0]}_n_read.csv", index=False)
 
-
         # Now convert to DataFrame
         df_read = pd.DataFrame(reads)
         print(df_read)
@@ -159,12 +157,76 @@ def load_BAM_files():
         break
 
 
+def prepare_datasets_for_ml():
+    """
+    Prepare datasets for machine learning.
+    """
+    # Load positive and negative reads
+    df_p_reads = pd.read_csv("../data/reads_dataframes/PAS56325_pass_e7d20a27_dca18cab_602_p_read.csv")
+
+    # Filter duplicates based on 'query_name' and 'reference_start'
+    df_p_reads = df_p_reads.drop_duplicates(subset=['query_subseq'])
+
+    print(df_p_reads)
+
+    df_n_reads = pd.read_csv("../data/reads_dataframes/PAS56325_pass_e7d20a27_dca18cab_602_n_read.csv")
+    # Filter duplicates based on 'query_name' and 'reference_start'
+    df_n_reads = df_n_reads.drop_duplicates(subset=['query_subseq'])
+
+    n_positive = len(df_p_reads.index)
+    print(f"Number of positive reads: {n_positive}")
+    print(f"Number of negative reads before sampling: {len(df_n_reads)}")
+
+    # sample negative reads to match the number of positive reads
+    df_n_reads = df_n_reads.sample(n=n_positive, random_state=42)
+    print(f"Positive reads: {len(df_p_reads)}, Negative reads: {len(df_n_reads)}")
+    # Reset index for both DataFrames
+    # Combine positive and negative reads
+    df_p_reads["labels"] = 1  # Positive samples
+    df_n_reads["labels"] = 0  # Negative samples
+    df_p_reads.reset_index(drop=True, inplace=True)
+    df_combined = pd.concat([df_p_reads, df_n_reads], ignore_index=True)
+
+    # Shuffle the dataset
+    df_combined = df_combined.sample(frac=1).reset_index(drop=True)
+
+    # Take only the first 1000 bases of the sequence
+    df_combined['query_subseq'] = df_combined['query_subseq'].str[:1000]
+
+    # Save the combined dataset
+    df_combined.to_csv("../data/reads_dataframes/PAS56325_pass_e7d20a27_dca18cab_602_H3K27me3_combined_read.csv", index=False)
+
+    df_ml = df_combined[['query_subseq']]
+    df_y = df_combined['labels']
+
+    # Split into train and test sets
+    X_train, X_test, y_train, y_test = train_test_split(
+        df_ml, df_y, test_size=0.2, random_state=42, stratify=df_y
+    )
+
+    # Optionally recombine into DataFrames
+    train_df = X_train.copy()
+    train_df['labels'] = y_train
+
+    test_df = X_test.copy()
+    test_df['labels'] = y_test
+
+
+    train_df.to_csv("../data/reads_dataframes/H3K27me3_train_read.csv", index=False)
+    test_df.to_csv("../data/reads_dataframes/H3K27me3_val_read.csv", index=False)
+
+    print("Combined dataset saved.")
+
+
 if __name__ == "__main__":
     # Load and preprocess the dataset
-    df_h3k27me3_peaks, df_bed = load_preprocess()
+    #df_h3k27me3_peaks, df_bed = load_preprocess()
 
     # Print the first 5 rows of the dataset
-    print(df_h3k27me3_peaks.head())
+    #print(df_h3k27me3_peaks.head())
 
     # Load BAM files
-    filterd_BAM = load_BAM_files()
+    #filterd_BAM = load_BAM_files()
+
+    # Prepare datasets for machine learning
+    prepare_datasets_for_ml()
