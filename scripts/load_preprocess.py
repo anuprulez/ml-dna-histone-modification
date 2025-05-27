@@ -69,7 +69,6 @@ def filter_peaks(i_read, chip_peaks):
             w_p_reads.append({
                 'chromosome': i_read.reference_name,
                 'query_name': i_read.query_name,
-                #'query_sequence': i_read.query_sequence,
                 'reference_start': ref_start,
                 'reference_end': ref_end,
                 'query_start': query_start,
@@ -138,7 +137,6 @@ def load_BAM_files():
             index_read += 1
             if index_read % 1000 == 0:
                 print(f"Processed {index_read} reads so far.")
-                break
             p_reads.extend(p_rd)
             n_reads.extend(n_rd)
 
@@ -220,13 +218,13 @@ def prepare_datasets_for_ml():
 
 if __name__ == "__main__":
     # Load and preprocess the dataset
-    #df_h3k27me3_peaks, df_bed = load_preprocess()
+    df_h3k27me3_peaks, df_bed = load_preprocess()
 
     # Print the first 5 rows of the dataset
     #print(df_h3k27me3_peaks.head())
 
     # Load BAM files
-    #filterd_BAM = load_BAM_files()
+    filterd_BAM = load_BAM_files()
 
     # Prepare datasets for machine learning
     prepare_datasets_for_ml()

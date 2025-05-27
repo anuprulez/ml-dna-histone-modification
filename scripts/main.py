@@ -2,26 +2,32 @@ import torch
 from torch.utils.data import DataLoader
 import torch.nn as nn
 from torch.optim import Adam
-import mlflow
-import mlflow.pytorch
 
 from dataset import DNADataset
 from model import DNAClassifier
 from utils import plot_metrics, compute_accuracy
+#from transformer_model import CustomTransformerClassifier as DNAClassifier
 
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-N_EPOCHS = 100
+N_EPOCHS = 50
 D_PATH = "../data/reads_dataframes/"
 O_PATH = "../data/outputs/"
 
 
+## Best parameters:
+## Params: {'d_model': 128, 'n_heads': 8, 'ffn_dim': 512, 'n_layers': 3, 'dropout': 0.38146500512692827, 'lr': 0.0009084718785706652, 'batch_size': 64}
 def train():
+    
     train_data = DNADataset(D_PATH + "H3K27me3_train_read.csv")
     val_data = DNADataset(D_PATH + "H3K27me3_val_read.csv")
+
     train_loader = DataLoader(train_data, batch_size=32, shuffle=True)
     val_loader = DataLoader(val_data, batch_size=32)
 
+    #vocab_size = max(train_data.get_vocab_size(), val_data.get_vocab_size())
+    #seq_len = len(train_data[0][0])
+    
     model = DNAClassifier().to(device)
     loss_fn = nn.BCEWithLogitsLoss()
     optimizer = Adam(model.parameters(), lr=1e-4)
