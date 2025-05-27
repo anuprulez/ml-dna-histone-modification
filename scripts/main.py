@@ -13,10 +13,12 @@ from utils import plot_metrics, compute_accuracy
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 N_EPOCHS = 10
 D_PATH = "../data/reads_dataframes/"
+O_PATH = "../data/outputs/"
 
 
 def train():
     mlflow.set_experiment("DNA_Transformer_Classification")
+    #mlflow.set_tracking_uri("http://localhost:5000")
 
     with mlflow.start_run():
         train_data = DNADataset(D_PATH + "H3K27me3_train_read.csv")
@@ -67,13 +69,13 @@ def train():
             print(f"Epoch {epoch+1}: Train Loss={train_losses[-1]:.4f}, Val Loss={val_losses[-1]:.4f}, Train Acc={train_accs[-1]:.4f}, Val Acc={val_accs[-1]:.4f}")
 
         # Plot
-        plot_metrics(train_losses, val_losses, train_accs, val_accs)
+        plot_metrics(train_losses, val_losses, train_accs, val_accs, O_PATH + "metrics.png")
 
         # Log MLflow artifacts
         mlflow.log_param("model", "Transformer")
         mlflow.log_param("epochs", 10)
         mlflow.log_metric("val_accuracy", val_accs[-1])
-        mlflow.log_artifact("metrics.png")
+        mlflow.log_artifact(O_PATH + "metrics.png")
         mlflow.pytorch.log_model(model, "model")
 
 if __name__ == "__main__":
