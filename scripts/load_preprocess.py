@@ -65,7 +65,7 @@ def filter_peaks(i_read, chip_peaks):
         # Check if it overlaps ChIP peak
         if window_bed.intersect(chip_peaks, u=True):
             # If it overlaps, create a positive sample
-            print(f"Positive sample: {i_read.query_name}, {i_read.reference_name}:{ref_start}-{ref_end}, Query: {query_subseq}")
+            #print(f"Positive sample: {i_read.query_name}, {i_read.reference_name}:{ref_start}-{ref_end}, Query: {query_subseq}")
             w_p_reads.append({
                 'chromosome': i_read.reference_name,
                 'query_name': i_read.query_name,
@@ -83,7 +83,6 @@ def filter_peaks(i_read, chip_peaks):
             w_n_reads.append({
                 'chromosome': i_read.reference_name,
                 'query_name': i_read.query_name,
-                #'query_sequence': i_read.query_sequence,
                 'reference_start': ref_start,
                 'reference_end': ref_end,
                 'query_start': query_start,
@@ -104,15 +103,17 @@ def load_BAM_files():
     chip_peaks = BedTool("../data/H3K27me3_narrow_peaks.bed")
 
     print(f"Found {len(BAM_files)} BAM files.")
-
-    for file in BAM_files:
+    f_p_reads = []
+    f_n_reads = []
+    for i, file in enumerate(BAM_files):
+        print(f"Processing file {i+1}/{len(BAM_files)}: {file}")
         filterd_BAM = pysam.AlignmentFile(file, "rb")
         reads = []
         p_reads = []
         n_reads = []
         index_read = 0
         for read in filterd_BAM.fetch(until_eof=True):
-            print(read.reference_name, read.query_name, read.mapping_quality, read.query_length, read.reference_start, read.reference_end)
+            #print(read.reference_name, read.query_name, read.mapping_quality, read.query_length, read.reference_start, read.reference_end)
             if read.query_sequence in [None, "None"] or read.mapping_quality < 20 or read.query_length < 1000 or read.reference_name != choromosome_name:
                 continue
             start = read.reference_start
@@ -130,29 +131,28 @@ def load_BAM_files():
                 'reference_length': read.reference_length,
                 'is_reverse': read.is_reverse,
             })
-
             ##################### create positive/negative samples based on Chip-seq peaks #####################
             p_rd, n_rd = filter_peaks(read, chip_peaks)
             print(f"Read {index_read} processed.")
             index_read += 1
-            if index_read % 1000 == 0:
+            if index_read % 10 == 0:
                 print(f"Processed {index_read} reads so far.")
+                break
             p_reads.extend(p_rd)
             n_reads.extend(n_rd)
-
-        # save positive and negative reads to DataFrames
-        df_p_reads = pd.DataFrame(p_reads)
-        df_n_reads = pd.DataFrame(n_reads)
-        print(f"Positive reads: {len(df_p_reads)}, Negative reads: {len(df_n_reads)}")
-        # Save positive and negative reads to CSV files
-        df_p_reads.to_csv(f"../data/reads_dataframes/{file.split('/')[-1].split('.')[0]}_p_read.csv", index=False)
-        df_n_reads.to_csv(f"../data/reads_dataframes/{file.split('/')[-1].split('.')[0]}_n_read.csv", index=False)
-
-        # Now convert to DataFrame
-        df_read = pd.DataFrame(reads)
-        print(df_read)
-        df_read.to_csv(f"../data/reads_dataframes/{file.split('/')[-1].split('.')[0]}_read.csv", index=False)
-        break
+        # Extend the main lists with the positive and negative reads
+        f_p_reads.extend(p_reads)
+        f_n_reads.extend(n_reads)
+        # Read 10 BAM files
+        if i == 10:
+           break
+    # save positive and negative reads to DataFrames
+    df_p_reads = pd.DataFrame(f_p_reads)
+    df_n_reads = pd.DataFrame(f_n_reads)
+    print(f"Positive reads: {len(df_p_reads)}, Negative reads: {len(df_n_reads)}")
+    # Save positive and negative reads to CSV files
+    df_p_reads.to_csv(f"../data/reads_dataframes/all_p_read.csv", index=False)
+    df_n_reads.to_csv(f"../data/reads_dataframes/all_n_read.csv", index=False)
 
 
 def prepare_datasets_for_ml():
@@ -160,14 +160,14 @@ def prepare_datasets_for_ml():
     Prepare datasets for machine learning.
     """
     # Load positive and negative reads
-    df_p_reads = pd.read_csv("../data/reads_dataframes/PAS56325_pass_e7d20a27_dca18cab_602_p_read.csv")
+    df_p_reads = pd.read_csv("../data/reads_dataframes/all_p_read.csv")
 
     # Filter duplicates based on 'query_name' and 'reference_start'
     df_p_reads = df_p_reads.drop_duplicates(subset=['query_subseq'])
 
     print(df_p_reads)
 
-    df_n_reads = pd.read_csv("../data/reads_dataframes/PAS56325_pass_e7d20a27_dca18cab_602_n_read.csv")
+    df_n_reads = pd.read_csv("../data/reads_dataframes/all_n_read.csv")
     # Filter duplicates based on 'query_name' and 'reference_start'
     df_n_reads = df_n_reads.drop_duplicates(subset=['query_subseq'])
 
@@ -219,9 +219,6 @@ def prepare_datasets_for_ml():
 if __name__ == "__main__":
     # Load and preprocess the dataset
     df_h3k27me3_peaks, df_bed = load_preprocess()
-
-    # Print the first 5 rows of the dataset
-    #print(df_h3k27me3_peaks.head())
 
     # Load BAM files
     filterd_BAM = load_BAM_files()
