@@ -197,30 +197,37 @@ def prepare_datasets_for_ml():
     df_y = df_combined['labels']
 
     # Split into train and test sets
-    X_train, X_test, y_train, y_test = train_test_split(
+    X_train, X_val, y_train, y_val = train_test_split(
         df_ml, df_y, test_size=0.2, random_state=42, stratify=df_y
     )
 
+    X_tr, X_te, y_tr, y_te = train_test_split(
+        X_train, y_train, test_size=0.2, random_state=42, stratify=y_train
+    )
+
     # Optionally recombine into DataFrames
-    train_df = X_train.copy()
-    train_df['labels'] = y_train
+    train_df = X_tr.copy()
+    train_df['labels'] = y_tr
 
-    test_df = X_test.copy()
-    test_df['labels'] = y_test
+    test_df = X_te.copy()
+    test_df['labels'] = y_te
 
+    val_df = X_val.copy()
+    val_df['labels'] = y_val
 
     train_df.to_csv("../data/reads_dataframes/H3K27me3_train_read.csv", index=False)
-    test_df.to_csv("../data/reads_dataframes/H3K27me3_val_read.csv", index=False)
+    val_df.to_csv("../data/reads_dataframes/H3K27me3_val_read.csv", index=False)
+    test_df.to_csv("../data/reads_dataframes/H3K27me3_test_read.csv", index=False)
 
     print("Combined dataset saved.")
 
 
 if __name__ == "__main__":
     # Load and preprocess the dataset
-    df_h3k27me3_peaks, df_bed = load_preprocess()
+    #df_h3k27me3_peaks, df_bed = load_preprocess()
 
     # Load BAM files
-    filterd_BAM = load_BAM_files()
+    #filterd_BAM = load_BAM_files()
 
     # Prepare datasets for machine learning
     prepare_datasets_for_ml()

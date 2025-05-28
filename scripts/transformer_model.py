@@ -24,10 +24,10 @@ class MultiHeadSelfAttention(nn.Module):
         assert d_model % n_heads == 0
         self.d_head = d_model // n_heads
         self.n_heads = n_heads
-
         self.qkv = nn.Linear(d_model, d_model * 3)
         self.out = nn.Linear(d_model, d_model)
         self.softmax = nn.Softmax(dim=-1)
+        self.att_weights = None
 
     def forward(self, x):
         B, T, C = x.shape
@@ -39,11 +39,11 @@ class MultiHeadSelfAttention(nn.Module):
         v = v.transpose(1, 2)
 
         attn_scores = (q @ k.transpose(-2, -1)) / math.sqrt(self.d_head)
-        attn_weights = self.softmax(attn_scores)
-        attn_output = attn_weights @ v  # (B, n_heads, T, d_head)
+        self.att_weights = self.softmax(attn_scores)
+        attn_output = self.att_weights @ v  # (B, n_heads, T, d_head)
 
         out = attn_output.transpose(1, 2).reshape(B, T, C)
-        return self.out(out)
+        return self.out(out), self.att_weights
 
 
 class TransformerBlock(nn.Module):
@@ -60,9 +60,10 @@ class TransformerBlock(nn.Module):
         self.dropout = nn.Dropout(dropout)
 
     def forward(self, x):
-        x = x + self.dropout(self.attn(self.norm1(x)))
+        attn_out, attn_weights = self.attn(self.norm1(x))
+        x = x + self.dropout(attn_out)
         x = x + self.dropout(self.ffn(self.norm2(x)))
-        return x
+        return x, attn_weights
 
 
 class CustomTransformerClassifier(nn.Module):
@@ -76,16 +77,25 @@ class CustomTransformerClassifier(nn.Module):
         ])
         self.classifier = nn.Sequential(
             nn.Dropout(dropout),
-            nn.Linear(d_model, 64),
+            nn.Linear(d_model, ffn_dim // 2),
             nn.ReLU(),
             nn.Dropout(dropout),
-            nn.Linear(64, 1)
+            nn.Linear(ffn_dim // 2, 1)
         )
 
+    def forward(self, x, return_attn=True):
+        x = self.embedding(x)
+        x = self.positional_encoding(x)
+        attn_weights = None
+        for block in self.transformer_blocks:
+            if return_attn:
+                x, attn_weights = block(x)
+            else:
+                x, _ = block(x)
+        logits = self.classifier(x.mean(dim=1))
+        if return_attn:
+            return logits.squeeze(1), attn_weights
+        return logits.squeeze(1)
+    
 
-    def forward(self, x):
-        x = self.embedding(x)                       # (B, T, d_model)
-        x = self.positional_encoding(x)             # (B, T, d_model)
-        x = self.transformer_blocks(x)              # (B, T, d_model)
-        x = x.mean(dim=1)                           # Global average pooling
-        return self.classifier(x).squeeze(1)        # (B,)
+        
