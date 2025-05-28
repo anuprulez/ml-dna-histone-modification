@@ -1,4 +1,4 @@
-n_epochs: 5
+n_epochs: 30
 seq_len: 1000
 vocab_size: 4
 d_model: 512
