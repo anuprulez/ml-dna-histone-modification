@@ -135,9 +135,8 @@ def load_BAM_files():
             p_rd, n_rd = filter_peaks(read, chip_peaks)
             print(f"Read {index_read} processed.")
             index_read += 1
-            if index_read % 10 == 0:
+            if index_read % 1000 == 0:
                 print(f"Processed {index_read} reads so far.")
-                break
             p_reads.extend(p_rd)
             n_reads.extend(n_rd)
         # Extend the main lists with the positive and negative reads
