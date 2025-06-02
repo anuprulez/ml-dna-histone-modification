@@ -1,3 +1,6 @@
+
+
+import pandas as pd
 import torch
 from torch.utils.data import DataLoader
 import torch.nn as nn
@@ -5,8 +8,9 @@ from torch.optim import Adam
 
 from omegaconf.omegaconf import OmegaConf
 
-from dataset import DNADataset
-from utils import plot_metrics, compute_accuracy, show_attention_matrix
+from dataset_kmer import DNAKmerDataset, build_fixed_kmer_vocab
+from utils import plot_metrics, compute_accuracy, show_attention_matrix, \
+    deduplicate_datasets, plot_confusion_matrix, create_precision_recall_curve
 from transformer_model import CustomTransformerClassifier as DNAClassifier
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
@@ -15,24 +19,38 @@ cfg = OmegaConf.load("../configs/train.yaml")
 
 def train():
 
-    train_data = DNADataset(cfg.train_file)
-    val_data = DNADataset(cfg.val_file)
-    test_data = DNADataset(cfg.test_file)
+    #train_data = DNADataset(cfg.train_file)
+    #val_data = DNADataset(cfg.val_file)
+    #test_data = DNADataset(cfg.test_file)
+
+
+    deduplicate_datasets(cfg.train_file, cfg.test_file, cfg.val_file)
+
+    k = cfg.kmer_size
+    vocab = build_fixed_kmer_vocab(k)
+    print(vocab)
+    print(f"Vocabulary size: {len(vocab)}")
+    cfg.vocab_size = len(vocab)
+    train_data = DNAKmerDataset(cfg.train_file, k, vocab)
+    val_data = DNAKmerDataset(cfg.val_file, k, vocab)
+    test_data = DNAKmerDataset(cfg.test_file, k, vocab)
+
+    print("Before encoding:")
+    train_df = pd.read_csv(cfg.train_file)    
+    trsequences = train_df['query_subseq'].tolist()
+    print(trsequences[0])  
+
+    print("After encoding:")
+    print(train_data[0])
 
     print(f"Train data: {len(train_data)}, Validation data: {len(val_data)}, Test data:  {len(test_data)}")
-    
-    #train_data = DNADataset(D_PATH + "H3K27me3_train_read.csv", k=1)
-    #val_data = DNADataset(D_PATH + "H3K27me3_val_read.csv", k=1)
 
     train_loader = DataLoader(train_data, batch_size=cfg.batch_size, shuffle=True)
     val_loader = DataLoader(val_data, batch_size=cfg.batch_size)
     test_loader = DataLoader(test_data, batch_size=cfg.batch_size)
 
-    #vocab_size = max(train_data.get_vocab_size(), val_data.get_vocab_size())
-    #seq_len = len(train_data[0][0])
-
     model = DNAClassifier(seq_len=cfg.seq_len, 
-                          vocab_size=cfg.vocab_size, 
+                          vocab_size=len(vocab), 
                           d_model=cfg.d_model, 
                           n_heads=cfg.n_heads, 
                           ffn_dim=cfg.ffn_dim, 
@@ -68,13 +86,21 @@ def train():
         # Evaluation
         model.eval()
         val_loss, val_acc = 0, 0
+        pred_scores = []
+        predictions = []
+        ground_truth = []
         with torch.no_grad():
             for x, y in val_loader:
                 x, y = x.to(device), y.to(device).float()
                 logits, _ = model(x)
                 loss = loss_fn(logits, y)
                 val_loss += loss.item()
-                val_acc += compute_accuracy(torch.sigmoid(logits), y)
+                pred = torch.sigmoid(logits)
+                pred_scores.extend(pred.cpu().numpy())
+                ints = (pred > 0.5).int()
+                predictions.extend(ints.cpu().numpy())
+                ground_truth.extend(y.cpu().numpy())
+                val_acc += compute_accuracy(pred, y)
 
         val_losses.append(val_loss / len(val_loader))
         val_accs.append(val_acc / len(val_loader))
@@ -84,6 +110,9 @@ def train():
     # Plot
     print("Evaluting on test data")
     plot_metrics(train_losses, val_losses, train_accs, val_accs, cfg.plot_acc_loss)
+    plot_confusion_matrix(predictions, ground_truth, labels=[0, 1], output_path=cfg.plot_confusion_matrix)
+    create_precision_recall_curve(ground_truth, pred_scores, output_path=cfg.plot_precision_recall_curve)
+
     #evaluate_test(model, test_loader, cfg)
 
 

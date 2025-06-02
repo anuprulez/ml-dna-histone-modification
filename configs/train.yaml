@@ -1,6 +1,6 @@
-n_epochs: 30
+n_epochs: 10
 seq_len: 1000
-vocab_size: 4
+#vocab_size: 4
 d_model: 512
 n_heads: 8
 ffn_dim: 512
@@ -8,8 +8,11 @@ n_layers: 3
 dropout: 0.2
 batch_size: 100
 learning_rate: 0.0001
-train_file: "../data/reads_dataframes/H3K27me3_train_read.csv"
-val_file: "../data/reads_dataframes/H3K27me3_val_read.csv"
-test_file: "../data/reads_dataframes/H3K27me3_test_read.csv"
+kmer_size: 6
+train_file: "../data/reads_dataframes/small_data/H3K27me3_train_read.csv"
+val_file: "../data/reads_dataframes/small_data/H3K27me3_val_read.csv"
+test_file: "../data/reads_dataframes/small_data/H3K27me3_test_read.csv"
 plot_acc_loss: "../data/outputs/accuracy_loss.png"
 plot_attention_mat: "../data/outputs/attention_plots/attention_matrix.png"
+plot_confusion_matrix: "../data/outputs/confusion_matrix.png"
+plot_precision_recall_curve: "../data/outputs/precision_recall_curve.png"
