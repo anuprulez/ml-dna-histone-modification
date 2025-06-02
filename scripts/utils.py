@@ -89,21 +89,7 @@ def deduplicate_datasets(path_tr, path_te, path_val):
 
 
 def show_attention_matrix(attention_weights, save_path, num_heads=4, num_tokens=1000, tokens=None):
-    """
-    Visualizes the attention matrix using seaborn heatmap.
-    
-    Parameters:
-    - attention_weights: 2D numpy array of shape (num_tokens, num_tokens)
-    - tokens: List of token labels for x and y axes (optional)
-    """
-    #attention_matrix = np.random.rand(10, 10)
-
-    # (Optional) Example token labels
-    # Simulate attention data for 4 heads, each with a 10x10 matrix
-    #num_heads = 4
-    #num_tokens = 1000
-    #attention_matrices = np.random.rand(num_heads, num_tokens, num_tokens)
-
+    """Visualizes the attention matrix using seaborn heatmap."""
     # Optional: token labels
     tokens = [f"T{i}" for i in range(num_tokens)]
 

@@ -26,17 +26,18 @@ def build_fixed_kmer_vocab(k: int) -> Dict[str, int]:
 
 
 def encode_sequence(sequence: str, k: int, vocab: Dict[str, int]) -> List[int]:
+    """ Encode a DNA sequence into k-mers and map them to vocabulary indices."""
     kmers = generate_kmers_from_sequence(sequence, k)
     return [vocab.get(kmer, vocab['<UNK>']) for kmer in kmers]
 
 
 class DNAKmerDataset(Dataset):
+    """Dataset for DNA sequences encoded as k-mers."""
     def __init__(self, path_sequences: Path, k: int, vocab: Dict[str, int]):
         df = pd.read_csv(path_sequences)
         self.sequences = df['query_subseq'].tolist()
         self.encoded_sequences = [encode_sequence(seq, k, vocab) for seq in self.sequences]
         self.labels = torch.tensor(df['labels'].astype(int).tolist(), dtype=torch.long)
-        
 
     def __len__(self):
         return len(self.encoded_sequences)
