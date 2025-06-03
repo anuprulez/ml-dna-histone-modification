@@ -12,6 +12,8 @@ from dataset_kmer import DNAKmerDataset, build_fixed_kmer_vocab
 from utils import plot_metrics, compute_accuracy, show_attention_matrix, \
     deduplicate_datasets, plot_confusion_matrix, create_precision_recall_curve
 from transformer_model import CustomTransformerClassifier as DNAClassifier
+from cnn_lstm_model import CNNLSTMClassifier as DNAClassifierCNNLSTM
+
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
@@ -23,7 +25,7 @@ def train():
     #val_data = DNADataset(cfg.val_file)
     #test_data = DNADataset(cfg.test_file)
 
-
+    # Check for contamination of training, validation, and test datasets
     deduplicate_datasets(cfg.train_file, cfg.test_file, cfg.val_file)
 
     k = cfg.kmer_size
@@ -35,28 +37,24 @@ def train():
     val_data = DNAKmerDataset(cfg.val_file, k, vocab)
     test_data = DNAKmerDataset(cfg.test_file, k, vocab)
 
-    print("Before encoding:")
-    train_df = pd.read_csv(cfg.train_file)    
-    trsequences = train_df['query_subseq'].tolist()
-    print(trsequences[0])  
-
-    print("After encoding:")
-    print(train_data[0])
-
     print(f"Train data: {len(train_data)}, Validation data: {len(val_data)}, Test data:  {len(test_data)}")
 
     train_loader = DataLoader(train_data, batch_size=cfg.batch_size, shuffle=True)
     val_loader = DataLoader(val_data, batch_size=cfg.batch_size)
     test_loader = DataLoader(test_data, batch_size=cfg.batch_size)
 
-    model = DNAClassifier(seq_len=cfg.seq_len, 
+    '''model = DNAClassifier(seq_len=cfg.seq_len, 
                           vocab_size=len(vocab), 
                           d_model=cfg.d_model, 
-                          n_heads=cfg.n_heads, 
+                          n_heads=cfg.n_heads,
                           ffn_dim=cfg.ffn_dim, 
                           n_layers=cfg.n_layers, 
                           dropout=cfg.dropout).to(device)
+    print(f"Model: {model}")'''
+
+    model = DNAClassifierCNNLSTM(vocab_size=len(vocab), num_classes=2)
     print(f"Model: {model}")
+    model.to(device)
 
     loss_fn = nn.BCEWithLogitsLoss()
     optimizer = Adam(model.parameters(), lr=cfg.learning_rate)
@@ -64,13 +62,15 @@ def train():
     train_losses, val_losses = [], []
     train_accs, val_accs = [], []
 
+    print("Starting training...")
     for epoch in range(cfg.n_epochs):
         model.train()
         total_loss, total_acc = 0, 0
 
         for x, y in train_loader:
             x, y = x.to(device), y.to(device).float()
-            logits, _ = model(x)
+            #logits, _ = model(x)
+            logits = model(x)
             loss = loss_fn(logits, y)
 
             optimizer.zero_grad()
@@ -92,7 +92,8 @@ def train():
         with torch.no_grad():
             for x, y in val_loader:
                 x, y = x.to(device), y.to(device).float()
-                logits, _ = model(x)
+                #logits, _ = model(x)
+                logits = model(x)
                 loss = loss_fn(logits, y)
                 val_loss += loss.item()
                 pred = torch.sigmoid(logits)
@@ -102,10 +103,13 @@ def train():
                 ground_truth.extend(y.cpu().numpy())
                 val_acc += compute_accuracy(pred, y)
 
+        ## TODO: Extract embeddings and plot UMAP or t-SNE
+
         val_losses.append(val_loss / len(val_loader))
         val_accs.append(val_acc / len(val_loader))
 
-        print(f"Epoch {epoch+1}: Train Loss={train_losses[-1]:.4f}, Val Loss={val_losses[-1]:.4f}, Train Acc={train_accs[-1]:.4f}, Val Acc={val_accs[-1]:.4f}")
+        print(f"Epoch {epoch+1}: Train Loss={train_losses[-1]:.4f}, Val Loss={val_losses[-1]:.4f}, \
+              Train Acc={train_accs[-1]:.4f}, Val Acc={val_accs[-1]:.4f}")
 
     # Plot
     print("Evaluting on test data")

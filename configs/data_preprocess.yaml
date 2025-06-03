@@ -1,0 +1,6 @@
+window_size: 200
+step_size: 200
+choromosome_name: "chr1"
+min_mapping_quality: 20
+min_overlap: 100
+base_path: "../data/reads_dataframes/sample_data/"

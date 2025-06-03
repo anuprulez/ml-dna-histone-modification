@@ -1,13 +1,16 @@
 from fireducks.pandas import pandas as pd
 import glob
 import pysam
+import numpy as np
 from sklearn.model_selection import train_test_split
 from pybedtools import BedTool
+import seaborn as sns
+import matplotlib.pyplot as plt
+
+from omegaconf.omegaconf import OmegaConf
 
 
-window_size = 1000
-step_size = 10
-choromosome_name = "chr1"
+cfg = OmegaConf.load("../configs/data_preprocess.yaml")
 
 def load_preprocess():
     """
@@ -24,10 +27,11 @@ def load_preprocess():
     # Select first 3 columns for BED
     df_bed = df.iloc[:, :3]
 
+    # analyse H3K27me3 peaks
+    #analyze_peaks()
+
     # Save as BED
     df_bed.to_csv("../data/H3K27me3_narrow_peaks.bed", sep="\t", header=False, index=False)
-
-    return df_h3k27me3_peaks, df_bed
 
 
 def filter_peaks(i_read, chip_peaks):
@@ -45,11 +49,11 @@ def filter_peaks(i_read, chip_peaks):
     df_pairs = pd.DataFrame(aligned_pairs, columns=["query_pos", "ref_pos"])
 
     # Slide a 1kb window over the reference positions
-    for i in range(0, len(df_pairs) - window_size + 1, step_size):
-        window = df_pairs.iloc[i:i + window_size]
+    for i in range(0, len(df_pairs) - cfg.window_size + 1, cfg.step_size):
+        window = df_pairs.iloc[i:i + cfg.window_size]
 
         # Ensure the window is contiguous on reference (optional check)
-        if window["ref_pos"].iloc[-1] - window["ref_pos"].iloc[0] != window_size - 1:
+        if window["ref_pos"].iloc[-1] - window["ref_pos"].iloc[0] != cfg.window_size - 1:
             continue  # skip non-contiguous spans
 
         ref_start = window["ref_pos"].iloc[0]
@@ -62,8 +66,22 @@ def filter_peaks(i_read, chip_peaks):
         # Make temporary BED line
         window_bed = BedTool(f"{i_read.reference_name}\t{ref_start}\t{ref_end}\n", from_string=True)
 
+        overlap = window_bed.intersect(chip_peaks, wo=True)
+
+        df_overlap = overlap.to_dataframe()
+        
+        '''if overlap:
+            print("Overlap found")
+            print(df_overlap.head())
+            #print(window_bed, query_start, query_end)
+            print(overlap, df_overlap["thickStart"], type(overlap), dir(overlap))
+            print("================\n")'''
+
         # Check if it overlaps ChIP peak
-        if window_bed.intersect(chip_peaks, u=True):
+        #if window_bed.intersect(chip_peaks, u=True):
+        if overlap and df_overlap["thickStart"].loc[0] >= cfg.min_overlap:
+            print(df_overlap["thickStart"])
+            print("---------")
             # If it overlaps, create a positive sample
             #print(f"Positive sample: {i_read.query_name}, {i_read.reference_name}:{ref_start}-{ref_end}, Query: {query_subseq}")
             w_p_reads.append({
@@ -99,7 +117,8 @@ def load_BAM_files():
     Load BAM files.
     """
     # Get all .bam files in the current directory
-    BAM_files = glob.glob("../data/alignments/*.bam")
+    # BAM_files = glob.glob("../data/alignments/*.bam")
+    BAM_files = glob.glob("../data/alignments/PAS56325_pass_e7d20a27_dca18cab_602.fastq.gz.bam")
     chip_peaks = BedTool("../data/H3K27me3_narrow_peaks.bed")
 
     print(f"Found {len(BAM_files)} BAM files.")
@@ -114,12 +133,12 @@ def load_BAM_files():
         index_read = 0
         for read in filterd_BAM.fetch(until_eof=True):
             #print(read.reference_name, read.query_name, read.mapping_quality, read.query_length, read.reference_start, read.reference_end)
-            if read.query_sequence in [None, "None"] or read.mapping_quality < 20 or read.query_length < 1000 or read.reference_name != choromosome_name:
+            if read.query_sequence in [None, "None"] or read.mapping_quality < cfg.min_mapping_quality or read.query_length < cfg.window_size or read.reference_name != cfg.choromosome_name:
                 continue
             start = read.reference_start
             end = read.reference_end
-            print(f"{read.reference_name}\t{start}\t{end}")
-            print(f"Read name: {read.query_sequence}, Length: {read.query_length}, Mapping quality: {read.mapping_quality}")
+            #print(f"{read.reference_name}\t{start}\t{end}")
+            #print(f"Read name: {read.query_sequence}, Length: {read.query_length}, Mapping quality: {read.mapping_quality}")
 
             reads.append({
                 'chromosome': read.reference_name,
@@ -133,10 +152,11 @@ def load_BAM_files():
             })
             ##################### create positive/negative samples based on Chip-seq peaks #####################
             p_rd, n_rd = filter_peaks(read, chip_peaks)
-            print(f"Read {index_read} processed.")
+            #print(f"Read {index_read} processed.")
             index_read += 1
-            if index_read % 1000 == 0:
+            if index_read % 200 == 0:
                 print(f"Processed {index_read} reads so far.")
+                #break
             p_reads.extend(p_rd)
             n_reads.extend(n_rd)
         # Extend the main lists with the positive and negative reads
@@ -150,8 +170,8 @@ def load_BAM_files():
     df_n_reads = pd.DataFrame(f_n_reads)
     print(f"Positive reads: {len(df_p_reads)}, Negative reads: {len(df_n_reads)}")
     # Save positive and negative reads to CSV files
-    df_p_reads.to_csv(f"../data/reads_dataframes/all_p_read.csv", index=False)
-    df_n_reads.to_csv(f"../data/reads_dataframes/all_n_read.csv", index=False)
+    df_p_reads.to_csv(cfg.base_path + "all_p_read.csv", index=False)
+    df_n_reads.to_csv(cfg.base_path + "all_n_read.csv", index=False)
 
 
 def prepare_datasets_for_ml():
@@ -159,14 +179,14 @@ def prepare_datasets_for_ml():
     Prepare datasets for machine learning.
     """
     # Load positive and negative reads
-    df_p_reads = pd.read_csv("../data/reads_dataframes/all_p_read.csv")
+    df_p_reads = pd.read_csv(cfg.base_path + "all_p_read.csv")
 
     # Filter duplicates based on 'query_name' and 'reference_start'
     df_p_reads = df_p_reads.drop_duplicates(subset=['query_subseq'])
 
     print(df_p_reads)
 
-    df_n_reads = pd.read_csv("../data/reads_dataframes/all_n_read.csv")
+    df_n_reads = pd.read_csv(cfg.base_path + "all_n_read.csv")
     # Filter duplicates based on 'query_name' and 'reference_start'
     df_n_reads = df_n_reads.drop_duplicates(subset=['query_subseq'])
 
@@ -191,7 +211,7 @@ def prepare_datasets_for_ml():
     df_combined['query_subseq'] = df_combined['query_subseq'].str[:1000]
 
     # Save the combined dataset
-    df_combined.to_csv("../data/reads_dataframes/PAS56325_pass_e7d20a27_dca18cab_602_H3K27me3_combined_read.csv", index=False)
+    df_combined.to_csv(cfg.base_path + "PAS56325_pass_e7d20a27_dca18cab_602_H3K27me3_combined_read.csv", index=False)
 
     df_ml = df_combined[['query_subseq']]
     df_y = df_combined['labels']
@@ -215,19 +235,61 @@ def prepare_datasets_for_ml():
     val_df = X_val.copy()
     val_df['labels'] = y_val
 
-    train_df.to_csv("../data/reads_dataframes/H3K27me3_train_read.csv", index=False)
-    val_df.to_csv("../data/reads_dataframes/H3K27me3_val_read.csv", index=False)
-    test_df.to_csv("../data/reads_dataframes/H3K27me3_test_read.csv", index=False)
+    train_df.to_csv(cfg.base_path + "H3K27me3_train_read.csv", index=False)
+    val_df.to_csv(cfg.base_path + "H3K27me3_val_read.csv", index=False)
+    test_df.to_csv(cfg.base_path + "H3K27me3_test_read.csv", index=False)
 
     print("Combined dataset saved.")
 
 
+def analyze_peaks():
+    """
+    Analyze H3K27me3 peaks.
+    """
+    # Load the dataset
+    df_h3k27me3_peaks = pd.read_csv("../data/H3K27me3_narrow_peaks.bed", sep="\t", header=None)
+
+    print(df_h3k27me3_peaks.head())
+
+    df_chr = df_h3k27me3_peaks[df_h3k27me3_peaks[0] == cfg.choromosome_name]
+
+    peak_range = df_h3k27me3_peaks[2] - df_h3k27me3_peaks[1]
+
+    print("Min, Max, Median, Mean", min(peak_range), max(peak_range), np.median(peak_range), np.mean(peak_range))
+
+    df_chr["peak_range"] = peak_range
+
+    print(df_chr.head())
+
+    df_chr.columns = ["chr_name", "peak_start", "peank_end", "peak_range"]
+
+    plt.figure(figsize=(10, 6))
+    # Plot histogram
+    sns.histplot(df_chr["peak_range"], bins=20, kde=True)  # `kde=True` adds a smooth density curve
+    plt.xlabel("Peak Range (bp)")
+    plt.ylabel("Frequency")
+    plt.title("Histogram of peak ranges for H3K27me3 peaks on chr1")
+    plt.savefig("../data/outputs/h3k27me3_peaks_ranges_histogram.png")
+
+
+    plt.figure(figsize=(10, 6))
+    categories = df_chr.index.tolist()
+    plt.bar(categories, df_chr["peak_range"].tolist(), color='skyblue')
+
+    # Customize labels and title
+    plt.xlabel("Number of Peaks")
+    plt.ylabel("Peak Range (bp)")
+    plt.title("Peak Range for H3K27me3 Peaks on chr1")
+    plt.savefig("../data/outputs/h3k27me3_peaks_ranges_barplot.png")
+
+
 if __name__ == "__main__":
+    
     # Load and preprocess the dataset
-    #df_h3k27me3_peaks, df_bed = load_preprocess()
+    load_preprocess()
 
     # Load BAM files
-    #filterd_BAM = load_BAM_files()
+    load_BAM_files()
 
     # Prepare datasets for machine learning
-    prepare_datasets_for_ml()
+    # prepare_datasets_for_ml()
