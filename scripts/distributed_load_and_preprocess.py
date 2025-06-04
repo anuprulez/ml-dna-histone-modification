@@ -49,11 +49,11 @@ def read_BAM_files_pyspark():
     sc = spark.sparkContext
 
     # Replace this with your actual BAM directory
-    bam_dir = "../data/alignments_5/"
+    bam_dir = "../data/alignments/"
     bam_files = [os.path.join(bam_dir, f) for f in os.listdir(bam_dir) if f.endswith(".bam")]
     chip_peaks = BedTool("../data/H3K27me3_narrow_peaks.bed")
 
-    print(bam_files)
+    print(len(bam_files))
 
     s_time = time.time()
     def process_bam(file_path):
@@ -93,10 +93,10 @@ def read_BAM_files_pyspark():
                 df_overlap = overlap.to_dataframe()
 
                 # Check if it overlaps ChIP peak
-                if overlap and df_overlap["thickStart"].loc[0] >= cfg.min_overlap:
+                if overlap and df_overlap["thickStart"].max() >= cfg.min_overlap:
                     print("Overlap found")
                     print(ref_start, ref_end, query_start, query_end)
-                    print(overlap, window_bed)
+                    print(df_overlap["thickStart"], df_overlap["thickStart"].max(), window_bed)
                     print("---------")
                     # If it overlaps, create a positive sample
                     p_reads.append({
@@ -132,7 +132,7 @@ def read_BAM_files_pyspark():
     rdd = sc.parallelize(bam_files, numSlices=len(bam_files))
     print(f"Number of BAM files to process: {rdd.getNumPartitions()}")
     pos_neg_reads = rdd.map(process_bam).collect()
-    
+
     f_p_reads = []
     f_n_reads = []
 
@@ -316,11 +316,11 @@ def find_sequence_similarity(seq_path):
 if __name__ == "__main__":
     
     # Load and preprocess the dataset
-    #load_peaks()
-    #read_BAM_files_pyspark()
+    load_peaks()
+    read_BAM_files_pyspark()
     # Check sequence similarities
     #qc_sequences()
-    find_sequence_similarity(cfg.base_path + "all_p_read.fasta")
+    #find_sequence_similarity(cfg.base_path + "all_p_read.fasta")
     #find_sequence_similarity(cfg.base_path + "all_n_read.fasta")
     # Prepare datasets for machine learning
     # prepare_datasets_for_ml()
