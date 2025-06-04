@@ -244,7 +244,7 @@ def analyze_peaks():
 
     print(df_chr.head())
 
-    df_chr.columns = ["chr_name", "peak_start", "peank_end", "peak_range"]
+    df_chr.columns = ["chr_name", "peak_start", "peak_end", "peak_range"]
 
     plt.figure(figsize=(10, 6))
     # Plot histogram
