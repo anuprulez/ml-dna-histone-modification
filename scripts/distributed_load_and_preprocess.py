@@ -49,7 +49,7 @@ def read_BAM_files_pyspark():
     sc = spark.sparkContext
 
     # Replace this with your actual BAM directory
-    bam_dir = "../data/alignments/"
+    bam_dir = cfg.BAM_repo_path #"../data/alignments/"
     bam_files = [os.path.join(bam_dir, f) for f in os.listdir(bam_dir) if f.endswith(".bam")]
     chip_peaks = BedTool("../data/H3K27me3_narrow_peaks.bed")
 
@@ -125,8 +125,9 @@ def read_BAM_files_pyspark():
                     })
         filterd_BAM.close()
         print(f"Finished processing file: {file_path}")
-        print(f"Positive reads: {len(p_reads)}, Negative reads: {len(n_reads)}")
-        return p_reads, n_reads
+        print(f"Positive reads: {len(p_reads)}, Negative reads: {len(n_reads)}, Negative reads: {len(p_reads)}")
+        random.shuffle(n_reads)
+        return p_reads, n_reads[:len(p_reads)]
 
     # Distribute the file list
     rdd = sc.parallelize(bam_files, numSlices=len(bam_files))
