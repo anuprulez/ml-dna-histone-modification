@@ -9,6 +9,9 @@ from sklearn.model_selection import train_test_split
 from pybedtools import BedTool
 import seaborn as sns
 import matplotlib.pyplot as plt
+from Bio import pairwise2
+from Bio import SeqIO
+
 
 from omegaconf.omegaconf import OmegaConf
 
@@ -273,12 +276,41 @@ def qc_sequences():
     df_pos_sequences = pd.read_csv(cfg.base_path + "all_p_read.csv", sep=",")
     
     with open(cfg.base_path + "all_p_read.fasta", "w") as fasta_out:
-        for _, row in df_neg_sequences.iterrows():
-            fasta_out.write(f">{row.index}\n{row['query_subseq']}\n")
+        for in_id, row in df_pos_sequences.iterrows():
+            fasta_out.write(f">{in_id}\n{row['query_subseq']}\n")
 
     with open(cfg.base_path + "all_n_read.fasta", "w") as fasta_out:
-        for _, row in df_neg_sequences.iterrows():
-            fasta_out.write(f">{row.index}\n{row['query_subseq']}\n")
+        for in_id, row in df_neg_sequences.iterrows():
+            fasta_out.write(f">{in_id}\n{row['query_subseq']}\n")
+
+
+def find_sequence_similarity(seq_path):
+    sequences = [str(record.seq) for record in SeqIO.parse(seq_path, "fasta")]
+    
+    sequences = sequences[0:50]
+    print(sequences)
+    # Pairwise global alignment
+    overall_score = []
+    for i in range(len(sequences)):
+        row_score  = []
+        for j in range(0, len(sequences)):
+            alignments = pairwise2.align.globalxx(sequences[i], sequences[j])
+            score = alignments[0].score
+            normalized_score = score / max(len(sequences[i]), len(sequences[j]))
+            row_score.append(normalized_score)
+            print(f"Normalized alignment score between Seq{i+1} and Seq{j+1}: {normalized_score:.3f}")
+        overall_score.append(row_score)
+
+    print(overall_score)
+    matrix = np.array(overall_score)
+
+    plt.figure(figsize=(6, 5))
+    plt.imshow(matrix, cmap='viridis', interpolation='nearest')
+    plt.colorbar(label='Similarity')
+    plt.title("Sequence Similarity Heatmap")
+    plt.tight_layout()
+    plt.savefig(cfg.base_path + "sequence_similarity_heatmap.png")
+    
 
 
 if __name__ == "__main__":
@@ -287,6 +319,8 @@ if __name__ == "__main__":
     #load_peaks()
     #read_BAM_files_pyspark()
     # Check sequence similarities
-    qc_sequences()
+    #qc_sequences()
+    find_sequence_similarity(cfg.base_path + "all_p_read.fasta")
+    #find_sequence_similarity(cfg.base_path + "all_n_read.fasta")
     # Prepare datasets for machine learning
     # prepare_datasets_for_ml()
