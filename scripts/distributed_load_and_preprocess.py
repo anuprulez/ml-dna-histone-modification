@@ -1,5 +1,7 @@
 import os
+import sys
 import time
+import random
 from fireducks.pandas import pandas as pd
 import glob
 import pysam
@@ -48,6 +50,11 @@ def read_BAM_files_pyspark():
 
     sc = spark.sparkContext
 
+    num_cores = spark.sparkContext.defaultParallelism
+    print(f"Num cores: {spark.sparkContext.defaultParallelism}")
+
+    #sys.exit()
+
     # Replace this with your actual BAM directory
     bam_dir = cfg.BAM_repo_path #"../data/alignments/"
     bam_files = [os.path.join(bam_dir, f) for f in os.listdir(bam_dir) if f.endswith(".bam")]
@@ -57,82 +64,87 @@ def read_BAM_files_pyspark():
 
     s_time = time.time()
     def process_bam(file_path):
-        print(f"Processing file: {file_path}")
-        filterd_BAM = pysam.AlignmentFile(file_path, "rb")
-        p_reads = []
-        n_reads = []
-        for read in filterd_BAM.fetch(until_eof=True):
-            if read.query_sequence in [None, "None"] or read.mapping_quality < cfg.min_mapping_quality or read.query_length < cfg.window_size or read.reference_name != cfg.choromosome_name:
-                continue
+        try:
+            print(f"Processing file: {file_path}")
+            p_reads = []
+            n_reads = []
+            filterd_BAM = pysam.AlignmentFile(file_path, "rb")
+            for read in filterd_BAM.fetch(until_eof=True):
+                if read.query_sequence in [None, "None"] or read.mapping_quality < cfg.min_mapping_quality or read.query_length < cfg.window_size or read.reference_name != cfg.choromosome_name:
+                    continue
 
-            aligned_pairs = read.get_aligned_pairs(matches_only=True)
+                aligned_pairs = read.get_aligned_pairs(matches_only=True)
 
-            # Only keep mappings where both query and ref positions are present
-            aligned_pairs = [(qpos, rpos) for qpos, rpos in aligned_pairs if qpos is not None and rpos is not None]
+                # Only keep mappings where both query and ref positions are present
+                aligned_pairs = [(qpos, rpos) for qpos, rpos in aligned_pairs if qpos is not None and rpos is not None]
 
-            # Convert to DataFrame for easier slicing
-            df_pairs = pd.DataFrame(aligned_pairs, columns=["query_pos", "ref_pos"])
+                # Convert to DataFrame for easier slicing
+                df_pairs = pd.DataFrame(aligned_pairs, columns=["query_pos", "ref_pos"])
 
-            # Slide a 1kb window over the reference positions
-            for i in range(0, len(df_pairs) - cfg.window_size + 1, cfg.step_size):
-                window = df_pairs.iloc[i:i + cfg.window_size]
+                # Slide a 1kb window over the reference positions
+                for i in range(0, len(df_pairs) - cfg.window_size + 1, cfg.step_size):
+                    window = df_pairs.iloc[i:i + cfg.window_size]
 
-                # Ensure the window is contiguous on reference (optional check)
-                if window["ref_pos"].iloc[-1] - window["ref_pos"].iloc[0] != cfg.window_size - 1:
-                    continue  # skip non-contiguous spans
+                    # Ensure the window is contiguous on reference (optional check)
+                    if window["ref_pos"].iloc[-1] - window["ref_pos"].iloc[0] != cfg.window_size - 1:
+                        continue  # skip non-contiguous spans
 
-                ref_start = window["ref_pos"].iloc[0]
-                ref_end = window["ref_pos"].iloc[-1] + 1
-                query_start = window["query_pos"].iloc[0]
-                query_end = window["query_pos"].iloc[-1] + 1
-                query_subseq = read.query_sequence[query_start: query_end]
+                    ref_start = window["ref_pos"].iloc[0]
+                    ref_end = window["ref_pos"].iloc[-1] + 1
+                    query_start = window["query_pos"].iloc[0]
+                    query_end = window["query_pos"].iloc[-1] + 1
+                    query_subseq = read.query_sequence[query_start: query_end]
 
-                # Make temporary BED line
-                window_bed = BedTool(f"{read.reference_name}\t{ref_start}\t{ref_end}\n", from_string=True)
-                overlap = window_bed.intersect(chip_peaks, wo=True)
-                df_overlap = overlap.to_dataframe()
+                    # Make temporary BED line
+                    window_bed = BedTool(f"{read.reference_name}\t{ref_start}\t{ref_end}\n", from_string=True)
+                    overlap = window_bed.intersect(chip_peaks, wo=True)
+                    df_overlap = overlap.to_dataframe()
 
-                # Check if it overlaps ChIP peak
-                if overlap and df_overlap["thickStart"].max() >= cfg.min_overlap:
-                    print("Overlap found")
-                    print(ref_start, ref_end, query_start, query_end)
-                    print(df_overlap["thickStart"], df_overlap["thickStart"].max(), window_bed)
-                    print("---------")
-                    # If it overlaps, create a positive sample
-                    p_reads.append({
-                        'chromosome': read.reference_name,
-                        'query_name': read.query_name,
-                        'reference_start': ref_start,
-                        'reference_end': ref_end,
-                        'query_start': query_start,
-                        'query_end': query_end,
-                        'query_subseq': query_subseq,
-                        'mapping_quality': read.mapping_quality,
-                        'query_length': read.query_length,
-                   })
-                else:
-                    # If it doesn't overlap, create a negative sample
-                    n_reads.append({
-                        'chromosome': read.reference_name,
-                        'query_name': read.query_name,
-                        'reference_start': ref_start,
-                        'reference_end': ref_end,
-                        'query_start': query_start,
-                        'query_end': query_end,
-                        'query_subseq': query_subseq,
-                        'mapping_quality': read.mapping_quality,
-                        'query_length': read.query_length,
-                    })
-        filterd_BAM.close()
-        print(f"Finished processing file: {file_path}")
-        print(f"Positive reads: {len(p_reads)}, Negative reads: {len(n_reads)}, Negative reads: {len(p_reads)}")
-        random.shuffle(n_reads)
-        return p_reads, n_reads[:len(p_reads)]
+                    # Check if it overlaps ChIP peak
+                    if overlap and df_overlap["thickStart"].max() >= cfg.min_overlap:
+                        print("Overlap found")
+                        print(ref_start, ref_end, query_start, query_end)
+                        print(df_overlap["thickStart"], df_overlap["thickStart"].max(), window_bed)
+                        print("---------")
+                        # If it overlaps, create a positive sample
+                        p_reads.append({
+                            'chromosome': read.reference_name,
+                            'query_name': read.query_name,
+                            'reference_start': ref_start,
+                            'reference_end': ref_end,
+                            'query_start': query_start,
+                            'query_end': query_end,
+                            'query_subseq': query_subseq,
+                            'mapping_quality': read.mapping_quality,
+                            'query_length': read.query_length,
+                        })
+                    else:
+                        # If it doesn't overlap, create a negative sample
+                        n_reads.append({
+                            'chromosome': read.reference_name,
+                            'query_name': read.query_name,
+                            'reference_start': ref_start,
+                            'reference_end': ref_end,
+                            'query_start': query_start,
+                            'query_end': query_end,
+                            'query_subseq': query_subseq,
+                            'mapping_quality': read.mapping_quality,
+                            'query_length': read.query_length,
+                        })
+            filterd_BAM.close()
+            print(f"Finished processing file: {file_path}")
+            print(f"Positive reads: {len(p_reads)}, Negative reads: {len(n_reads)}, Negative reads: {len(p_reads)}")
+            random.shuffle(n_reads)
+            return p_reads, n_reads[:len(p_reads)]
+        except Exception as e:
+            print(f"Error processing file: {file_path}, error: {e}")
+            return None
 
     # Distribute the file list
-    rdd = sc.parallelize(bam_files, numSlices=len(bam_files))
-    print(f"Number of BAM files to process: {rdd.getNumPartitions()}")
-    pos_neg_reads = rdd.map(process_bam).collect()
+    rdd = sc.parallelize(bam_files, numSlices=num_cores)
+    print(f"Number of BAM files to process: {len()}")
+    #pos_neg_reads = rdd.map(process_bam).collect()
+    pos_neg_reads = rdd.map(process_bam).filter(lambda x: x is not None).collect()
 
     f_p_reads = []
     f_n_reads = []
