@@ -36,7 +36,10 @@ class DNAKmerDataset(Dataset):
     def __init__(self, path_sequences: Path, k: int, vocab: Dict[str, int]):
         df = pd.read_csv(path_sequences)
         self.sequences = df['query_subseq'].tolist()
+        print(len(self.sequences[0]))
         self.encoded_sequences = [encode_sequence(seq, k, vocab) for seq in self.sequences]
+        print(len(self.encoded_sequences[0]))
+        print("-----------")
         self.labels = torch.tensor(df['labels'].astype(int).tolist(), dtype=torch.long)
 
     def __len__(self):

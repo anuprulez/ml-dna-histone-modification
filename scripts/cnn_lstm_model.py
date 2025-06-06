@@ -13,22 +13,22 @@ class CNNLSTMClassifier(nn.Module):
 
         # CNN to learn local motifs
         self.cnn = nn.Sequential(
-            nn.Conv1d(in_channels=embed_dim, out_channels=128, kernel_size=7, padding=3),
+            nn.Conv1d(in_channels=embed_dim, out_channels=embed_dim, kernel_size=7, padding=3),
             nn.ReLU(),
-            nn.MaxPool1d(kernel_size=2),  # 995 -> 497
+            nn.MaxPool1d(kernel_size=2),
 
-            nn.Conv1d(128, 256, kernel_size=5, padding=2),
+            nn.Conv1d(embed_dim, 2*embed_dim, kernel_size=5, padding=2),
             nn.ReLU(),
-            nn.MaxPool1d(kernel_size=2),  # 497 -> 248
+            nn.MaxPool1d(kernel_size=2),
 
-            nn.Conv1d(256, 128, kernel_size=3, padding=1),
+            nn.Conv1d(2*embed_dim, embed_dim, kernel_size=3, padding=1),
             nn.ReLU(),
-            nn.MaxPool1d(kernel_size=2),  # 248 -> 124
+            nn.MaxPool1d(kernel_size=2),
         )
 
         # LSTM to learn long-range dependencies
         self.lstm = nn.LSTM(
-            input_size=128,  # Must match CNN output channels
+            input_size=lstm_hidden,  # Must match CNN output channels
             hidden_size=lstm_hidden,
             num_layers=lstm_layers,
             batch_first=True,
@@ -37,10 +37,10 @@ class CNNLSTMClassifier(nn.Module):
 
         # Classification head
         self.classifier = nn.Sequential(
-            nn.Linear(lstm_hidden * 2, 64),
+            nn.Linear(lstm_hidden * 2, lstm_hidden // 2),
             nn.ReLU(),
             nn.Dropout(0.2),
-            nn.Linear(64, 1)
+            nn.Linear(lstm_hidden // 2, 1)
         )
 
     def forward(self, x):

@@ -1,5 +1,3 @@
-
-
 import pandas as pd
 import torch
 from torch.utils.data import DataLoader
@@ -30,7 +28,6 @@ def train():
 
     k = cfg.kmer_size
     vocab = build_fixed_kmer_vocab(k)
-    print(vocab)
     print(f"Vocabulary size: {len(vocab)}")
     cfg.vocab_size = len(vocab)
     train_data = DNAKmerDataset(cfg.train_file, k, vocab)
@@ -43,16 +40,23 @@ def train():
     val_loader = DataLoader(val_data, batch_size=cfg.batch_size)
     test_loader = DataLoader(test_data, batch_size=cfg.batch_size)
 
-    '''model = DNAClassifier(seq_len=cfg.seq_len, 
+    effective_seq_len = cfg.seq_len - cfg.kmer_size + 1
+
+    model = DNAClassifier(seq_len=effective_seq_len,
                           vocab_size=len(vocab), 
                           d_model=cfg.d_model, 
                           n_heads=cfg.n_heads,
                           ffn_dim=cfg.ffn_dim, 
                           n_layers=cfg.n_layers, 
                           dropout=cfg.dropout).to(device)
-    print(f"Model: {model}")'''
+    print(f"Model: {model}")
 
-    model = DNAClassifierCNNLSTM(vocab_size=len(vocab), num_classes=2)
+    '''model = DNAClassifierCNNLSTM(vocab_size=len(vocab), 
+                                 num_classes=2, 
+                                 embed_dim=cfg.d_model, 
+                                 lstm_hidden=cfg.ffn_dim, 
+                                 lstm_layers=1
+                                )'''
     print(f"Model: {model}")
     model.to(device)
 
@@ -69,8 +73,8 @@ def train():
 
         for x, y in train_loader:
             x, y = x.to(device), y.to(device).float()
-            #logits, _ = model(x)
-            logits = model(x)
+            logits, _ = model(x)
+            #logits = model(x)
             loss = loss_fn(logits, y)
 
             optimizer.zero_grad()
@@ -92,8 +96,8 @@ def train():
         with torch.no_grad():
             for x, y in val_loader:
                 x, y = x.to(device), y.to(device).float()
-                #logits, _ = model(x)
-                logits = model(x)
+                logits, _ = model(x)
+                #logits = model(x)
                 loss = loss_fn(logits, y)
                 val_loss += loss.item()
                 pred = torch.sigmoid(logits)

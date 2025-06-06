@@ -3,5 +3,5 @@ step_size: 500
 choromosome_name: "chr1"
 min_mapping_quality: 20
 min_overlap: 250
-base_path: "../data/reads_dataframes/BAM_1_100/"
-BAM_repo_path: "../data/alignments_1_100/"
+base_path: "../data/reads_dataframes/BAM_500_900/"
+BAM_repo_path: "../data/alignments_500_900/"

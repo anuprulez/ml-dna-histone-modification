@@ -142,7 +142,7 @@ def read_BAM_files_pyspark():
 
     # Distribute the file list
     rdd = sc.parallelize(bam_files, numSlices=num_cores)
-    print(f"Number of BAM files to process: {len()}")
+    print(f"Number of BAM files to process: {len(bam_files)}")
     #pos_neg_reads = rdd.map(process_bam).collect()
     pos_neg_reads = rdd.map(process_bam).filter(lambda x: x is not None).collect()
 
