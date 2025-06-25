@@ -16,10 +16,11 @@ from Bio import SeqIO
 
 from omegaconf.omegaconf import OmegaConf
 
+
 cfg = OmegaConf.load("../configs/data_preprocess.yaml")
 cfg_train = OmegaConf.load("../configs/train.yaml")
 
-cfg.base_path = "../data/reads_dataframes/BAM_1_100/"
+cfg.base_path = "../data/reads_dataframes/BAM_0_400/"
 
 
 def prepare_datasets_for_ml():
