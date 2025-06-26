@@ -48,7 +48,7 @@ def tokenize_sequences(examples):
     """Convert DNA sequences to token IDs"""
     return tokenizer(
         examples['sequence'],
-        padding='longest',
+        padding='max_length',
         truncation=True,
         max_length=cfg.seq_len
     )
@@ -77,15 +77,12 @@ model = AutoModelForSequenceClassification.from_pretrained(MODEL_NAME,
                                                            trust_remote_code=True,
                                                            use_safetensors=True)
 print(model.config)
-data_collator = DataCollatorWithPadding(tokenizer=tokenizer)
+#data_collator = DataCollatorWithPadding(tokenizer=tokenizer)
 
 def compute_metrics(eval_preds):
     predictions, labels = eval_preds
-
     print(predictions[0].shape, predictions[1].shape)
-
     print(labels)
-
     print("Labels shape:", labels.shape)
 
     if predictions[0].ndim == 2:
@@ -127,7 +124,6 @@ trainer = NoSaveTrainer(
     train_dataset=tr_dataset,
     eval_dataset=te_dataset,
     tokenizer=tokenizer,
-    data_collator=data_collator,
     compute_metrics=compute_metrics
 )
 
