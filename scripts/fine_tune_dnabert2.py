@@ -1,4 +1,5 @@
 import os
+import re
 import sys
 import torch
 import numpy as np
@@ -13,6 +14,9 @@ from transformers import (
     DataCollatorWithPadding,
     set_seed,
 )
+from transformers import AutoTokenizer, AutoModel
+from transformers.models.bert.configuration_bert import BertConfig
+
 from sklearn.metrics import accuracy_score, precision_recall_fscore_support
 
 from omegaconf.omegaconf import OmegaConf
@@ -22,59 +26,84 @@ from utils import deduplicate_datasets
 # ----------------------------
 # Configuration
 # ----------------------------
-MODEL_NAME = "zhihan1996/DNA_bert_6"
-MAX_LENGTH = 1000  # Length of DNA sequence
+MODEL_NAME = "zhihan1996/DNABERT-2-117M" #"zhihan1996/DNA_bert_6"
+MAX_LENGTH = 500  # Length of DNA sequence
 KMER = 6           # Must match model's k-mer
 NUM_LABELS = 2     # Binary classification
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+
+print(device)
 
 cfg = OmegaConf.load("../configs/train.yaml")
 
 # ----------------------------
 # Tokenization using K-mers
 # ----------------------------
-tokenizer = AutoTokenizer.from_pretrained(MODEL_NAME)
+tokenizer = AutoTokenizer.from_pretrained(MODEL_NAME, trust_remote_code=True)
 
-def tokenize_function(seq):
+
+print(tokenizer("AATATTTAAAATAAAATAATTAGGTAAATGTAATGGGATAAATACTTGTACACAAACTTGT"))
+
+def tokenize_sequences(examples):
+    """Convert DNA sequences to token IDs"""
     return tokenizer(
-        seq["sequence"],            # or "text" or whatever your column is called
-        padding="max_length",
-        truncation=True,
-        max_length=cfg.seq_len                  # DNABERT-2 max length; adjust if needed
+        examples['sequence'],
+        padding='longest',    # Pad to longest sequence in batch
+        truncation=True,       # Truncate to model's max length (512)
+        #return_tensors='pt',   # Return PyTorch tensors
+        max_length=cfg.seq_len         # DNABERT-2 max context
     )
+
+def sanitize_dna(sequence):
+    """Ensure uppercase ACGT only"""
+    sequence = sequence.upper()
+    sequence = re.sub(r'[^ACGT]', '', sequence)  # Remove non-ACGT
+    return sequence
 
 def load_dataset_from_csv(file_path):
     dataset = pd.read_csv(file_path, sep=",")
+    #dataset = load_dataset('csv', data_files=file_path)
+
     print(dataset.head())
+
     data_dict = Dataset.from_dict({
         "sequence": dataset["query_subseq"].to_list(),
         "label": dataset["labels"].to_list()
     })
-    tokenised_data = data_dict.map(tokenize_function, batched=True)
+    #data_dict = data_dict.map(lambda x: {'sequence': sanitize_dna(x['sequence'])})
+    tokenised_data = data_dict.map(tokenize_sequences, batched=True)
+    print(tokenised_data)
     return tokenised_data
 
 deduplicate_datasets(cfg.train_file, cfg.test_file, cfg.val_file)
-
-k = cfg.kmer_size
-vocab = build_fixed_kmer_vocab(k)
-print(f"Vocabulary size: {len(vocab)}")
-
-cfg.vocab_size = len(vocab)
 
 tr_dataset = load_dataset_from_csv(cfg.train_file)
 te_dataset = load_dataset_from_csv(cfg.test_file)
 val_data = load_dataset_from_csv(cfg.val_file)
 
-print(tr_dataset)
+#print(tr_dataset)
+#print(tr_dataset["sequence"][:1])
+#print(tr_dataset["label"][:1])
+#print( tr_dataset["input_ids"][:1])
 
-#tokenized_train = train_dataset.map(tokenize_function, batched=True)
-#tokenized_test = test_dataset.map(tokenize_function, batched=True)
+#sys.exit()
 
 # ----------------------------
 # Model & Trainer Setup
 # ----------------------------
-model = AutoModelForSequenceClassification.from_pretrained(MODEL_NAME, num_labels=NUM_LABELS)
+model = AutoModelForSequenceClassification.from_pretrained(MODEL_NAME,
+                                                           trust_remote_code=True,
+                                                           use_safetensors=True,
+                                                           use_flash_attention_2=False)
+
+#config = BertConfig.from_pretrained("zhihan1996/DNABERT-2-117M")
+#model = AutoModel.from_pretrained("zhihan1996/DNABERT-2-117M", trust_remote_code=True, config=config, use_safetensors=True)
+
+print(model.config)
+model.config.use_flash_attn = False
+model.config.attn_implementation = "eager"
+#model.encoder.layer[0].attention.flash_attn = False
 data_collator = DataCollatorWithPadding(tokenizer=tokenizer)
 
 # Evaluation metric
@@ -98,6 +127,7 @@ training_args = TrainingArguments(
     save_total_limit=2,
     load_best_model_at_end=True,
     metric_for_best_model="f1",
+    gradient_accumulation_steps=64
 )
 
 trainer = Trainer(
@@ -107,7 +137,7 @@ trainer = Trainer(
     eval_dataset=te_dataset,
     tokenizer=tokenizer,
     data_collator=data_collator,
-    compute_metrics=compute_metrics,
+    compute_metrics=compute_metrics
 )
 
 # ----------------------------
