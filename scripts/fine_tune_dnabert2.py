@@ -19,10 +19,11 @@ from transformers.models.bert.configuration_bert import BertConfig
 from sklearn.metrics import accuracy_score, precision_recall_fscore_support, f1_score
 from omegaconf.omegaconf import OmegaConf
 from dataset_kmer import DNAKmerDataset, build_fixed_kmer_vocab
-from utils import deduplicate_datasets
+from utils import plot_metrics, compute_accuracy, show_attention_matrix, \
+    deduplicate_datasets, plot_confusion_matrix, create_precision_recall_curve
 
 
-MODEL_NAME = "zhihan1996/DNABERT-2-117M"
+MODEL_NAME = "zhihan1996/DNA_bert_6" #"zhihan1996/DNABERT-2-117M"
 NUM_LABELS = 2
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
@@ -33,17 +34,25 @@ cfg = OmegaConf.load("../configs/train.yaml")
 
 tokenizer = AutoTokenizer.from_pretrained(MODEL_NAME, trust_remote_code=True)
 
-print(tokenizer("AATATTTAAAATAAAATAATTAGGTAAATGTAATGGGATAAATACTTGTACACAAACTTGT"))
+#print(tokenizer("AATATTTAAAATAAAATAATTAGGTAAATGTAATGGGATAAATACTTGTACACAAACTTGT"))
 
 data_collator = DataCollatorWithPadding(tokenizer)
 
+def kmerize(sequence, k=6):
+    return " ".join([sequence[i:i+k] for i in range(len(sequence) - k + 1)])
+
 def tokenize_sequences(examples):
+    kmer_seqs = [kmerize(seq, k=cfg.kmer_size) for seq in examples["sequence"]]
+    return tokenizer(kmer_seqs, padding="max_length", truncation=True, max_length=cfg.seq_len)
+
+
+'''def tokenize_sequences(examples):
     return tokenizer(
         examples['sequence'],
         padding='max_length',
-        truncation=True,
+        #truncation=True,
         max_length=cfg.seq_len
-    )
+    )'''
 
 def load_dataset_from_csv(file_path):
     dataset = pd.read_csv(file_path, sep=",")
@@ -79,6 +88,24 @@ def compute_metrics(eval_preds):
     print("Predictions shape:", preds.shape)
     print(labels)
     print(preds)
+    plot_confusion_matrix(preds, labels, labels=[0, 1], output_path=cfg.plot_confusion_matrix)
+    create_precision_recall_curve(labels, predictions[0][:, 1], output_path=cfg.plot_precision_recall_curve)
+    return {
+        "accuracy": accuracy_score(labels, preds),
+        "f1": f1_score(labels, preds, average="binary"),
+    }
+
+def compute_metrics_kmer_model(eval_preds):
+    predictions, labels = eval_preds
+    print(type(predictions), type(labels))
+    print(predictions.shape)
+    preds = np.argmax(predictions, axis=1)
+    print("Labels shape:", labels.shape)
+    print("Predictions shape:", preds.shape)
+    print(labels)
+    print(preds)
+    plot_confusion_matrix(preds, labels, labels=[0, 1], output_path=cfg.plot_confusion_matrix)
+    create_precision_recall_curve(labels, predictions[:, 1], output_path=cfg.plot_precision_recall_curve)
     return {
         "accuracy": accuracy_score(labels, preds),
         "f1": f1_score(labels, preds, average="binary"),
@@ -111,7 +138,7 @@ trainer = NoSaveTrainer(
     eval_dataset=te_dataset,
     tokenizer=tokenizer,
     data_collator=data_collator,
-    compute_metrics=compute_metrics
+    compute_metrics=compute_metrics_kmer_model
 )
 
 trainer.train()
